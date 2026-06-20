@@ -86,20 +86,28 @@ if uploaded_file is not None:
         st.image(annotated_img, caption="Hasil Deteksi (Terfilter)", use_container_width=True)
         st.success(f"Ditemukan **{n_vehicles_valid} kendaraan**. Kepadatan: **{density_class}**")
 
-    # ------------------ JIKA PENGGUNA MENGUNGGAH VIDEO ------------------
+  # ------------------ JIKA PENGGUNA MENGUNGGAH VIDEO ------------------
     elif file_extension in ['mp4', 'avi']:
-        # Simpan video ke temporary file agar bisa dibaca OpenCV
         tfile = tempfile.NamedTemporaryFile(delete=False) 
         tfile.write(uploaded_file.read())
         
         cap = cv2.VideoCapture(tfile.name)
-        stframe = st.empty() # Wadah kosong untuk menampilkan video live
+        stframe = st.empty() 
         status_text = st.empty()
+        
+        # Tambahkan dua baris ini untuk fitur Frame Skipping
+        frame_skip = 5  # Memproses 1 dari setiap 5 frame (ubah angkanya jika masih lambat)
+        frame_count = 0
         
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
+            
+            # Logika melompati frame
+            frame_count += 1
+            if frame_count % frame_skip != 0:
+                continue
                 
             results = model.predict(source=frame, conf=confidence, verbose=False)
             n_vehicles_valid = 0
@@ -115,10 +123,7 @@ if uploaded_file is not None:
             
             cv2.polylines(frame, [roi_points], isClosed=True, color=(0, 255, 0), thickness=2)
             
-            # Ubah BGR ke RGB untuk Streamlit
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Update layar Streamlit
             stframe.image(frame_rgb, use_container_width=True)
             density_class = classify_density(n_vehicles_valid, config)
             status_text.markdown(f"**Kendaraan saat ini: {n_vehicles_valid} | Kepadatan: {density_class}**")
