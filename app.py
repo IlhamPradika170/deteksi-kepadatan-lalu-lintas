@@ -86,22 +86,28 @@ if uploaded_file is not None:
         st.image(annotated_img, caption="Hasil Deteksi (Terfilter)", use_container_width=True)
         st.success(f"Ditemukan **{n_vehicles_valid} kendaraan**. Kepadatan: **{density_class}**")
 
-  # ------------------ JIKA PENGGUNA MENGUNGGAH VIDEO ------------------
+# ------------------ JIKA PENGGUNA MENGUNGGAH VIDEO ------------------
     elif file_extension in ['mp4', 'avi']:
         tfile = tempfile.NamedTemporaryFile(delete=False) 
         tfile.write(uploaded_file.read())
         
         cap = cv2.VideoCapture(tfile.name)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) # Menghitung total frame video
         
-        st.info("Video sedang diproses di server. Mohon tunggu, ini membutuhkan waktu karena menggunakan CPU (Tanpa GPU).")
+        # Ambil properti video asli untuk membuat wadah video baru
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        # Elemen UI untuk Progress Bar dan Status
+        # Siapkan VideoWriter (Penjahit Video) dari OpenCV
+        out_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(out_file.name, fourcc, fps, (width, height))
+        
+        st.info("Mesin sedang memproses dan menjahit ulang video. Mohon tunggu sebentar, proses ini memakan waktu...")
+        
         progress_bar = st.progress(0)
         status_text = st.empty()
-        stframe = st.empty() # Wadah untuk preview gambar
-        
-        frame_skip = 10  # Melewati 9 frame agar tidak memberatkan server
         frame_count = 0
         
         while cap.isOpened():
@@ -110,16 +116,9 @@ if uploaded_file is not None:
                 break
                 
             frame_count += 1
+            progress_bar.progress(min(frame_count / total_frames, 1.0))
             
-            # Update Progress Bar setiap kali frame terbaca
-            progress = min(frame_count / total_frames, 1.0)
-            progress_bar.progress(progress)
-            
-            # Lewati frame yang tidak kelipatan 10
-            if frame_count % frame_skip != 0:
-                continue
-                
-            # Proses deteksi hanya untuk frame yang terpilih
+            # Lakukan deteksi YOLO
             results = model.predict(source=frame, conf=confidence, verbose=False)
             n_vehicles_valid = 0
             
@@ -127,6 +126,7 @@ if uploaded_file is not None:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
                 
+                # Filter dengan Trapesium ROI
                 if cv2.pointPolygonTest(roi_points, (cx, cy), False) >= 0:
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
                     cv2.circle(frame, (cx, cy), 5, (255, 255, 0), -1)
@@ -134,13 +134,29 @@ if uploaded_file is not None:
             
             cv2.polylines(frame, [roi_points], isClosed=True, color=(0, 255, 0), thickness=2)
             
-            # Tampilkan sebagai "Preview" di web
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            stframe.image(frame_rgb, caption="Preview Frame Terdeteksi (Mode Cepat)", use_container_width=True)
+            # Tulis/jahit frame yang sudah diedit ke dalam file video baru
+            out.write(frame)
             
             density_class = classify_density(n_vehicles_valid, config)
-            status_text.markdown(f"**Proses Frame {frame_count}/{total_frames}** | Kendaraan: **{n_vehicles_valid}** | Kepadatan: **{density_class}**")
+            status_text.markdown(f"**Merakit Frame {frame_count} dari {total_frames}** | Kepadatan Saat Ini: {density_class}")
             
+        # Tutup mesin pembaca dan penjahit video
         cap.release()
-        progress_bar.progress(1.0) # Pastikan bar penuh 100% di akhir
-        st.success("Pemrosesan video selesai!")
+        out.release()
+        progress_bar.progress(1.0)
+        
+        st.success("✅ Pemrosesan video selesai!")
+        
+        # Memunculkan Pemutar Video di Streamlit
+        st.video(out_file.name)
+        
+        # Memunculkan Tombol Download
+        with open(out_file.name, 'rb') as v_file:
+            st.download_button(
+                label="⬇️ Download Video Hasil Deteksi",
+                data=v_file,
+                file_name="hasil_deteksi_kepadatan.mp4",
+                mime="video/mp4"
+            )
+else:
+    st.info("Silakan unggah citra atau video untuk memulai deteksi.")
