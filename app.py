@@ -92,23 +92,34 @@ if uploaded_file is not None:
         tfile.write(uploaded_file.read())
         
         cap = cv2.VideoCapture(tfile.name)
-        stframe = st.empty() 
-        status_text = st.empty()
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) # Menghitung total frame video
         
-        # Tambahkan dua baris ini untuk fitur Frame Skipping
-        frame_skip = 15  # Memproses 1 dari setiap 5 frame (ubah angkanya jika masih lambat)
+        st.info("Video sedang diproses di server. Mohon tunggu, ini membutuhkan waktu karena menggunakan CPU (Tanpa GPU).")
+        
+        # Elemen UI untuk Progress Bar dan Status
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        stframe = st.empty() # Wadah untuk preview gambar
+        
+        frame_skip = 10  # Melewati 9 frame agar tidak memberatkan server
         frame_count = 0
         
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            
-            # Logika melompati frame
+                
             frame_count += 1
+            
+            # Update Progress Bar setiap kali frame terbaca
+            progress = min(frame_count / total_frames, 1.0)
+            progress_bar.progress(progress)
+            
+            # Lewati frame yang tidak kelipatan 10
             if frame_count % frame_skip != 0:
                 continue
                 
+            # Proses deteksi hanya untuk frame yang terpilih
             results = model.predict(source=frame, conf=confidence, verbose=False)
             n_vehicles_valid = 0
             
@@ -123,12 +134,13 @@ if uploaded_file is not None:
             
             cv2.polylines(frame, [roi_points], isClosed=True, color=(0, 255, 0), thickness=2)
             
+            # Tampilkan sebagai "Preview" di web
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            stframe.image(frame_rgb, use_container_width=True)
+            stframe.image(frame_rgb, caption="Preview Frame Terdeteksi (Mode Cepat)", use_container_width=True)
+            
             density_class = classify_density(n_vehicles_valid, config)
-            status_text.markdown(f"**Kendaraan saat ini: {n_vehicles_valid} | Kepadatan: {density_class}**")
+            status_text.markdown(f"**Proses Frame {frame_count}/{total_frames}** | Kendaraan: **{n_vehicles_valid}** | Kepadatan: **{density_class}**")
             
         cap.release()
-        st.success("Pemutaran video selesai!")
-else:
-    st.info("Silakan unggah citra atau video untuk memulai deteksi.")
+        progress_bar.progress(1.0) # Pastikan bar penuh 100% di akhir
+        st.success("Pemrosesan video selesai!")
