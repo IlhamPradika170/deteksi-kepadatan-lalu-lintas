@@ -96,7 +96,7 @@ if uploaded_file is not None:
         status_text = st.empty()
         
         # Tambahkan dua baris ini untuk fitur Frame Skipping
-        frame_skip = 5  # Memproses 1 dari setiap 5 frame (ubah angkanya jika masih lambat)
+        frame_skip = 15  # Memproses 1 dari setiap 5 frame (ubah angkanya jika masih lambat)
         frame_count = 0
         
         while cap.isOpened():
