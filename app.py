@@ -65,6 +65,17 @@ DENSITY_COLOR = {
     "Padat": "#F44336",
 }
 
+# ==========================================
+# DEFINISI KOORDINAT ROI (AREA ASPAL)
+# ==========================================
+# Anda bisa mengubah angka ini jika kamera/video yang diuji berbeda
+roi_points = np.array([
+    [0, 720],     # Kiri Bawah
+    [530, 280],   # Kiri Atas
+    [750, 280],   # Kanan Atas
+    [1280, 720]   # Kanan Bawah
+], np.int32)
+
 # ===================== ANTARMUKA UTAMA =====================
 st.title("🚗 Deteksi & Klasifikasi Kepadatan Lalu Lintas")
 st.write(
