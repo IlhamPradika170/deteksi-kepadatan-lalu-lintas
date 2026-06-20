@@ -1,0 +1,6 @@
+{
+  "threshold_sepi_sedang": 9.5,
+  "threshold_sedang_padat": 20.5,
+  "model_path": "/content/runs/detect/runs_kepadatan/yolov8n_vehicle-2/weights/best.pt",
+  "confidence": 0.25
+}
