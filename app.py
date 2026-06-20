@@ -2,14 +2,7 @@
 Aplikasi Web - Deteksi & Klasifikasi Kepadatan Lalu Lintas
 =============================================================
 Antarmuka Streamlit: upload citra top-view -> deteksi kendaraan ->
-klasifikasi kepadatan (Padat / Sedang / Sepi)
-
-Cara menjalankan lokal:
-    streamlit run app.py
-
-File pendukung yang HARUS ada di folder yang sama dengan app.py:
-    - best.pt               (bobot model YOLOv8 hasil training)
-    - config_kepadatan.json (threshold kepadatan hasil tahap sebelumnya)
+klasifikasi kepadatan (Padat / Sedang / Sepi) dengan Filter ROI
 """
 
 import streamlit as st
@@ -26,7 +19,6 @@ st.set_page_config(
     page_icon="🚗",
     layout="centered",
 )
-
 
 # ===================== MUAT MODEL & KONFIGURASI (DI-CACHE) =====================
 @st.cache_resource
@@ -45,9 +37,7 @@ def load_model_and_config():
     loaded_model = YOLO(str(model_path))
     return loaded_model, cfg
 
-
 model, config = load_model_and_config()
-
 
 # ===================== FUNGSI KLASIFIKASI KEPADATAN =====================
 def classify_density(n_vehicles, cfg):
@@ -58,29 +48,17 @@ def classify_density(n_vehicles, cfg):
     else:
         return "Padat"
 
-
 DENSITY_COLOR = {
     "Sepi": "#4CAF50",
     "Sedang": "#FFC107",
     "Padat": "#F44336",
 }
 
-# ==========================================
-# DEFINISI KOORDINAT ROI (AREA ASPAL)
-# ==========================================
-# Anda bisa mengubah angka ini jika kamera/video yang diuji berbeda
-roi_points = np.array([
-    [0, 720],     # Kiri Bawah
-    [530, 280],   # Kiri Atas
-    [750, 280],   # Kanan Atas
-    [1280, 720]   # Kanan Bawah
-], np.int32)
-
 # ===================== ANTARMUKA UTAMA =====================
 st.title("🚗 Deteksi & Klasifikasi Kepadatan Lalu Lintas")
 st.write(
     "Unggah citra top-view (CCTV/drone) jalan raya untuk mendeteksi kendaraan "
-    "dan mengetahui tingkat kepadatan lalu lintas secara otomatis."
+    "dan mengetahui tingkat kepadatan lalu lintas secara otomatis di area jalur utama."
 )
 
 with st.sidebar:
@@ -104,15 +82,46 @@ if uploaded_file is not None:
 
     with st.spinner("Mendeteksi kendaraan..."):
         results = model.predict(source=img_array, conf=confidence, verbose=False)
-        n_vehicles = len(results[0].boxes)
+        
+        # ===================== LOGIKA FILTER ROI (TRAPESIUM) =====================
+        # Koordinat kerucut aspal yang sudah dicari sebelumnya
+        roi_points = np.array([
+            [0, 720],     # Kiri Bawah
+            [530, 280],   # Kiri Atas
+            [750, 280],   # Kanan Atas
+            [1280, 720]   # Kanan Bawah
+        ], np.int32)
+        
+        # Salin gambar asli agar kita bisa menggambar kotak manual di atasnya
+        annotated_img = img_array.copy()
+        n_vehicles_valid = 0
+        
+        for box in results[0].boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            cx = int((x1 + x2) / 2)
+            cy = int((y1 + y2) / 2)
+            
+            # Uji apakah titik tengah mobil ada di dalam batas aspal
+            is_inside = cv2.pointPolygonTest(roi_points, (cx, cy), False)
+            
+            if is_inside >= 0:
+                # Gambar kotak merah dan titik kuning
+                cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.circle(annotated_img, (cx, cy), 5, (255, 255, 0), -1)
+                n_vehicles_valid += 1
+                
+        # Gambar garis poligon hijau batas area
+        cv2.polylines(annotated_img, [roi_points], isClosed=True, color=(0, 255, 0), thickness=2)
+        
+        # Masukkan jumlah kendaraan yang sudah difilter ke dalam sistem klasifikasi
+        n_vehicles = n_vehicles_valid
         density_class = classify_density(n_vehicles, config)
-        annotated = cv2.cvtColor(results[0].plot(), cv2.COLOR_BGR2RGB)
 
     col1, col2 = st.columns(2)
     with col1:
         st.image(image, caption="Citra Asli", use_container_width=True)
     with col2:
-        st.image(annotated, caption="Hasil Deteksi", use_container_width=True)
+        st.image(annotated_img, caption="Hasil Deteksi (Terfilter)", use_container_width=True)
 
     st.markdown("---")
     c1, c2 = st.columns(2)
