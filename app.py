@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 import cv2
 import tempfile
+import os
 from ultralytics import YOLO
 
 # ===================== KONFIGURASI HALAMAN =====================
@@ -160,21 +161,30 @@ if uploaded_file is not None:
                 f"Kendaraan saat ini: **{n_vehicles}** | Kepadatan: **{density_class}**"
             )
             
+       # Tutup mesin pembaca dan penjahit video
         cap.release()
         out.release()
         progress_bar.progress(1.0)
         
-        st.success("✅ Pemrosesan dan perakitan video selesai!")
+        st.success("✅ Pemrosesan video selesai! Sedang menyiapkan pemutar web...")
         
-        # Menampilkan video yang sudah berhasil dijahit ulang secara mulus
-        st.video(out_file.name)
+        # --- MULAI PROSES KONVERSI KE H.264 ---
+        # Siapkan file baru untuk hasil konversi
+        converted_video = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         
-        # Menyediakan tombol download untuk menyimpan hasil video ke lokal laptop
-        with open(out_file.name, 'rb') as v_file:
+        # Perintahkan sistem Linux Streamlit untuk mengonversi codec menggunakan FFmpeg
+        os.system(f"ffmpeg -y -i {out_file.name} -vcodec libx264 {converted_video.name}")
+        # --------------------------------------
+        
+        # Menampilkan video hasil konversi di Streamlit
+        st.video(converted_video.name)
+        
+        # Menyediakan tombol download untuk video yang sudah dikonversi
+        with open(converted_video.name, 'rb') as v_file:
             st.download_button(
                 label="⬇️ Download Video Hasil Deteksi",
                 data=v_file,
-                file_name="hasil_deteksi_penuh.mp4",
+                file_name="hasil_deteksi_kepadatan.mp4",
                 mime="video/mp4"
             )
 else:
